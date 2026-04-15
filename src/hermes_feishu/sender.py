@@ -51,10 +51,10 @@ def _add_reaction_to_message(
         client: lark-oapi client instance.
         message_id: Feishu message ID.
         reaction_type: Feishu emoji_type string. Common values:
-            - "YES" (✅) - 表示已完成
+            - "DONE" (✅) - 表示已完成
             - "OK" (👌) - 表示确认
             - "THUMBSUP" (👍) - 表示点赞
-            - "CLAP" (👏) - 表示鼓掌
+            - "APPLAUSE" (👏) - 表示鼓掌
             See: https://open.feishu.cn/document/server-docs/im-v1/message-reaction/emojis-introduce
 
     Returns:
@@ -72,7 +72,7 @@ def _add_reaction_to_message(
             .message_id(message_id) \
             .request_body(
                 CreateMessageReactionRequestBody.builder()
-                .reaction_type(reaction_type)
+                .reaction_type({"emoji_type": reaction_type})  # Object with emoji_type field
                 .build()
             ).build()
 
