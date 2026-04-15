@@ -189,7 +189,10 @@ def send_card(
 
         # Add reaction if specified
         if add_reaction and message_id:
+            logger.info("hermes_feishu: Adding reaction '%s' to message %s", add_reaction, message_id)
             _add_reaction_to_message(client, message_id, add_reaction)
+        else:
+            logger.info("hermes_feishu: Skipping reaction (add_reaction=%r, message_id=%r)", add_reaction, message_id)
 
         return json.dumps({
             "success": True,
