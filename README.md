@@ -45,10 +45,10 @@ FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
 ### 4. 重启 Hermes
 
 ```bash
-hermes
+hermes gateway restart
 ```
 
-启动后使用 `/plugins` 命令确认插件已加载。
+重启后使用 `/plugins` 命令确认插件已加载。
 
 ## 使用方式
 
