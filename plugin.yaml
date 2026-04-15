@@ -1,0 +1,21 @@
+name: hermes-feishu
+version: 0.2.0
+manifest_version: 1
+author: hermes-feishu contributors
+description: 增强 Hermes 飞书消息通道，支持卡片消息和表格渲染。当 LLM 需要展示表格时，自动通过飞书卡片 Table 组件发送，解决飞书 post 消息不支持 Markdown 表格的问题。
+pip_dependencies:
+  - lark-oapi>=1.5.3,<2
+requires_env:
+  - name: FEISHU_APP_ID
+    description: "飞书应用 App ID，在飞书开放平台 -> 应用管理 -> 凭证与基础信息中获取"
+    url: "https://open.feishu.cn/app"
+    secret: false
+  - name: FEISHU_APP_SECRET
+    description: "飞书应用 App Secret"
+    url: "https://open.feishu.cn/app"
+    secret: true
+provides_tools:
+  - send_feishu_card
+  - send_feishu_table
+provides_hooks:
+  - pre_llm_call
