@@ -117,8 +117,8 @@ def _on_pre_llm_call(
         "1. Use `send_feishu_card` or `send_feishu_table` tool to render tables\n"
         "2. Do NOT include Markdown table syntax in your regular text response\n"
         "3. You can still use other Markdown formatting in normal messages\n\n"
-        "**Reaction Feature**: Messages sent via tools will automatically get a 👍 reaction.\n"
-        "This indicates successful delivery. No need to specify reaction parameter.\n"
+        "**Reaction Feature**: Messages sent via tools will automatically get a YES (✅) reaction.\n"
+        "This indicates successful completion. No need to specify reaction parameter.\n"
     )
     
     if chat_id:

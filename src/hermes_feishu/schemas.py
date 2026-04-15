@@ -60,11 +60,12 @@ SEND_FEISHU_CARD_SCHEMA = {
             "reaction": {
                 "type": "string",
                 "description": (
-                    "Optional emoji to add as reaction after sending. "
-                    "Default: '👍' (automatically added if not specified). "
-                    "Pass empty string '' to skip reaction."
+                    "Optional Feishu emoji_type to add as reaction after sending. "
+                    "Default: 'YES' (✅). Common values: 'YES', 'OK', 'THUMBSUP', 'CLAP'. "
+                    "Pass empty string '' to skip reaction. "
+                    "See: https://open.feishu.cn/document/server-docs/im-v1/message-reaction/emojis-introduce"
                 ),
-                "default": "👍",
+                "default": "YES",
             },
         },
         "required": ["content"],
@@ -122,11 +123,12 @@ SEND_FEISHU_TABLE_SCHEMA = {
             "reaction": {
                 "type": "string",
                 "description": (
-                    "Optional emoji to add as reaction after sending. "
-                    "Default: '👍' (automatically added if not specified). "
-                    "Pass empty string '' to skip reaction."
+                    "Optional Feishu emoji_type to add as reaction after sending. "
+                    "Default: 'YES' (✅). Common values: 'YES', 'OK', 'THUMBSUP', 'CLAP'. "
+                    "Pass empty string '' to skip reaction. "
+                    "See: https://open.feishu.cn/document/server-docs/im-v1/message-reaction/emojis-introduce"
                 ),
-                "default": "👍",
+                "default": "YES",
             },
         },
         "required": ["headers", "rows"],
