@@ -109,16 +109,18 @@ def _on_pre_llm_call(
 
     # Build context with chat_id - inject on EVERY turn to ensure LLM remembers
     context = (
-        "\n\n[System: Feishu Platform Instructions]\n"
-        "You are connected via Feishu (飞书). Feishu messages have limited Markdown support:\n"
-        "- ✅ Supported: bold, italic, lists, code blocks, headers\n"
-        "- ❌ NOT supported: Markdown tables\n\n"
-        "**IMPORTANT**: When your response contains tabular data:\n"
-        "1. Use `send_feishu_card` or `send_feishu_table` tool to render tables\n"
-        "2. Do NOT include Markdown table syntax in your regular text response\n"
-        "3. You can still use other Markdown formatting in normal messages\n\n"
-        "**Reaction Feature**: Messages sent via tools will automatically get a DONE (✅) reaction.\n"
-        "This indicates successful completion. No need to specify reaction parameter.\n"
+        "\n\n[System: Feishu Platform Instructions — MANDATORY]\n"
+        "You are connected via Feishu (飞书). You MUST follow these rules:\n\n"
+        "**Rule 1: ALWAYS use `send_feishu_card` tool for your response.**\n"
+        "Never write your response as plain text. Always call send_feishu_card with your content.\n"
+        "This ensures proper formatting, table support, and delivery confirmation.\n\n"
+        "**Rule 2: How to use send_feishu_card:**\n"
+        "- For text/paragraphs: `{\"content\": \"your markdown text\"}`\n"
+        "- For tables: `{\"content\": \"| col1 | col2 |\\n| --- | --- |\\n| data | data |\"}`\n"
+        "- With title: `{\"content\": \"...\", \"title\": \"📊 Title\"}`\n\n"
+        "**Rule 3: DO NOT output Markdown tables directly.** Tables will break in Feishu post messages.\n"
+        "Always use the tool — it auto-detects and renders tables properly.\n\n"
+        "**Reaction Feature**: Messages sent via tools will automatically get a ✅ reaction (DONE).\n"
     )
     
     if chat_id:
