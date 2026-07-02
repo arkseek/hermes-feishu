@@ -147,6 +147,24 @@ LLM 调用 send_feishu_table:
   ]
 ```
 
+### 示例：X/Twitter 监控摘要
+
+如果 Hermes 同时安装 [Hermes Tweet](https://github.com/Xquik-dev/hermes-tweet)，可以先让代理读取 X/Twitter 账号、帖子或趋势，再用本插件把结果发送为飞书卡片表格：
+
+```json
+{
+  "headers": ["来源", "内容", "建议动作"],
+  "rows": [
+    ["@example", "新品发布被 3 个行业账号转发", "整理复盘"],
+    ["关键词", "品牌词讨论量上升", "继续观察"]
+  ],
+  "title": "X/Twitter 监控摘要",
+  "template": "blue"
+}
+```
+
+这样飞书群内能直接看到结构化摘要，而 X/Twitter 的读取或动作权限仍由 Hermes Tweet 的配置控制。
+
 ## 插件架构
 
 ```
