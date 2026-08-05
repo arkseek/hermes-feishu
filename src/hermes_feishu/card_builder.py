@@ -9,7 +9,14 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
-from .table_parser import ParsedTable, TableColumn, TableCell, parse_table, split_table_and_text
+from .table_parser import (
+    ParsedTable,
+    TableColumn,
+    TableCell,
+    _TABLE_BLOCK_RE,
+    parse_table,
+    split_table_and_text,
+)
 
 
 def _build_table_columns(columns: List[TableColumn]) -> List[Dict[str, Any]]:
@@ -22,20 +29,44 @@ def _build_table_columns(columns: List[TableColumn]) -> List[Dict[str, Any]]:
         List of Feishu column spec dicts.
 
     Feishu column format:
-        {"name": "field_name", "display_name": "显示名称", "width": "auto"}
+        {"name": "field_name", "display_name": "显示名称", "width": "auto", "field_type": "text|number"}
     """
     feishu_cols: List[Dict[str, Any]] = []
     for idx, col in enumerate(columns):
         spec: Dict[str, Any] = {
-            "name": f"col_{idx}",  # Use col_0, col_1, etc. as field names
-            "display_name": col.name,  # Column header text
+            "name": f"col_{idx}",  # Internal field key for row mapping
+            "display_name": col.name,  # Column header text shown in UI
             "width": "auto",
-            "field_type": "text",  # Feishu requires this field
+            "field_type": col.field_type or "text",  # Use inferred type
         }
         if col.width:
             spec["width"] = col.width
         feishu_cols.append(spec)
     return feishu_cols
+
+
+def _convert_cell_value(cell: TableCell, field_type: str) -> Any:
+    """Convert cell text to the appropriate type based on column field_type.
+
+    For number columns, attempt numeric conversion so Feishu renders proper
+    alignment. Falls back to string if conversion fails.
+
+    Args:
+        cell: Parsed table cell.
+        field_type: Column field type ("text" or "number").
+
+    Returns:
+        String for text columns, int/float for number columns (if convertible).
+    """
+    if field_type == "number":
+        try:
+            cleaned = cell.text.replace(",", "").replace("%", "").strip()
+            if "." in cleaned:
+                return float(cleaned)
+            return int(cleaned)
+        except (ValueError, AttributeError):
+            pass
+    return cell.text
 
 
 def _build_table_rows(
@@ -46,21 +77,21 @@ def _build_table_rows(
 
     Args:
         rows: Parsed table cell data.
-        columns: Column definitions (for type info).
+        columns: Column definitions (used for type conversion).
 
     Returns:
         List of Feishu row dicts.
-        
+
     Feishu row format:
-        {"col_0": {"tag": "plain_text", "content": "..."}, "col_1": {...}}
+        {"col_0": "Alice", "col_1": 95}
     """
     feishu_rows: List[Dict[str, Any]] = []
     for row in rows:
         feishu_row: Dict[str, Any] = {}
         for idx, cell in enumerate(row):
-            # Build cell: key is column name (col_0, col_1, etc.)
-            # When field_type is "text", value should be just the string
-            feishu_row[f"col_{idx}"] = cell.text
+            col = columns[idx] if idx < len(columns) else None
+            field_type = col.field_type if col else "text"
+            feishu_row[f"col_{idx}"] = _convert_cell_value(cell, field_type)
         feishu_rows.append(feishu_row)
     return feishu_rows
 
@@ -173,22 +204,12 @@ def build_mixed_card(
         }
 
     elements: List[Dict[str, Any]] = []
-    table_blocks, text_segments = split_table_and_text(markdown)
 
-    # Interleave text and table elements in original order
-    table_idx = 0
-    text_idx = 0
-
-    # Walk through the original markdown to maintain order
-    import re
-    _TABLE_BLOCK_RE = re.compile(
-        r"((?:^\|[^\n]+\|\s*\n"
-        r"^\|[\s:|-]+\|\s*\n"
-        r"(?:^\|[^\n]+\|\s*\n?)*)+)",
-        re.MULTILINE,
-    )
-
+    # Walk through the original markdown to maintain order of text and tables.
+    # _TABLE_BLOCK_RE is imported from table_parser to ensure consistent
+    # table detection between parsing and card building.
     last_end = 0
+    table_idx = 0
     for match in _TABLE_BLOCK_RE.finditer(markdown):
         # Text before this table
         before = markdown[last_end:match.start()].strip()

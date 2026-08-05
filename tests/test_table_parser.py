@@ -43,6 +43,16 @@ class TestParseRow:
         result = _parse_row("| $100 | 50% | 1,000 |")
         assert result == ["$100", "50%", "1,000"]
 
+    def test_escaped_pipe_in_cell(self):
+        """Escaped pipes (\\|) should be treated as literal pipe characters."""
+        result = _parse_row("| a \\| b | c |")
+        assert result == ["a | b", "c"]
+        assert len(result) == 2
+
+    def test_multiple_escaped_pipes(self):
+        result = _parse_row("| x \\| y \\| z | done |")
+        assert result == ["x | y | z", "done"]
+
 
 class TestInferColumnType:
     def test_all_numbers(self):

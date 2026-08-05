@@ -7,12 +7,13 @@ This plugin enhances Hermes Agent's Feishu messaging capabilities by providing:
 """
 
 import logging
+import os
 
 from .schemas import SEND_FEISHU_CARD_SCHEMA, SEND_FEISHU_TABLE_SCHEMA
 from .sender import _has_credentials
-from .tools import send_feishu_card, send_feishu_table
+from .tools import send_feishu_card, send_feishu_table, set_session_chat_id
 
-__version__ = "0.3.6"
+__version__ = "0.4.0"
 
 logger = logging.getLogger("hermes-feishu")
 
@@ -58,7 +59,6 @@ def _on_pre_llm_call(
     """Inject Feishu formatting instructions when platform is Feishu.
 
     Injects on every turn to ensure LLM remembers to use card tools.
-    Uses full instructions on first turn, brief reminder on subsequent turns.
     Also provides the current chat_id so LLM can call tools without guessing.
 
     Args:
@@ -78,21 +78,26 @@ def _on_pre_llm_call(
     if not platform or platform.lower() not in ("feishu", "lark"):
         return None
 
-    # Store chat_id in os.environ for tools to access
-    # (contextvars don't propagate across thread pool boundary)
-    import os
+    # Store chat_id for tool handlers to access.
+    # Use thread-local storage (safe within same thread) plus os.environ fallback
+    # (needed because contextvars don't propagate across thread pool boundary).
+    # NOTE: os.environ fallback has a race condition for concurrent sessions on
+    # different chats. The real fix is for Hermes to pass chat_id to tool handlers.
     if chat_id:
+        set_session_chat_id(chat_id)
         os.environ["HERMES_SESSION_CHAT_ID"] = chat_id
 
     # Log hook activation for debugging
     logger.info(
-        f"[hermes-feishu] pre_llm_call hook: platform={platform}, chat_id={chat_id or '(empty)'}, session_id={session_id}, sender_id={sender_id or '(empty)'}"
+        f"[hermes-feishu] pre_llm_call hook: platform={platform}, "
+        f"chat_id={chat_id or '(empty)'}, session_id={session_id}, "
+        f"sender_id={sender_id or '(empty)'}"
     )
-    # Debug: print all kwargs to see what Hermes passes
+    # Debug: log extra kwargs Hermes passes (DEBUG level to avoid leaking PII)
     if kwargs:
-        logger.info(f"[hermes-feishu] pre_llm_call kwargs keys: {list(kwargs.keys())}, values: {kwargs}")
+        logger.debug(f"[hermes-feishu] pre_llm_call kwargs keys: {list(kwargs.keys())}")
     else:
-        logger.info("[hermes-feishu] pre_llm_call kwargs is empty")
+        logger.debug("[hermes-feishu] pre_llm_call kwargs is empty")
 
     # Hermes doesn't pass chat_id and contextvars don't propagate to thread pool.
     # Extract chat_id from session_id format: "agent:main:feishu:dm:oc_xxx"
@@ -120,12 +125,11 @@ def _on_pre_llm_call(
         "**Reaction Feature**: Messages sent via tools will automatically get a DONE (✅) reaction.\n"
         "This indicates successful completion. No need to specify reaction parameter.\n"
     )
-    
+
     if chat_id:
         context += f"\n**Current chat_id**: `{chat_id}`\n"
         logger.info(f"[hermes-feishu] Injected chat_id into context: {chat_id}")
-    
-    # Log injection for debugging
+
     logger.debug(f"[hermes-feishu] Injecting context (length={len(context)} chars)")
-    
+
     return {"context": context}

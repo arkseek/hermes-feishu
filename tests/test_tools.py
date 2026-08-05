@@ -136,10 +136,17 @@ class TestPreLlmCallHook:
         result = _on_pre_llm_call(platform="telegram", is_first_turn=True)
         assert result is None
 
-    def test_not_first_turn_returns_none(self):
+    def test_non_first_turn_still_injects_context(self):
+        """Context is injected on every turn, not just the first.
+
+        The implementation intentionally re-injects on every turn to
+        ensure the LLM remembers the formatting instructions throughout
+        a multi-turn conversation.
+        """
         from hermes_feishu import _on_pre_llm_call
         result = _on_pre_llm_call(platform="feishu", is_first_turn=False)
-        assert result is None
+        assert result is not None
+        assert "context" in result
 
     def test_no_platform_returns_none(self):
         from hermes_feishu import _on_pre_llm_call

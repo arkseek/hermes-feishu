@@ -9,14 +9,32 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from typing import Any, Dict, List
 
-from .card_builder import build_mixed_card, build_table_card
+from .card_builder import build_content_card, build_mixed_card, build_table_card
 from .schemas import SEND_FEISHU_CARD_SCHEMA, SEND_FEISHU_TABLE_SCHEMA
 from .sender import _has_credentials, send_card
 from .table_parser import ParsedTable, TableColumn, TableCell
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Thread-local session context
+# ---------------------------------------------------------------------------
+
+_thread_local = threading.local()
+
+
+def set_session_chat_id(chat_id: str) -> None:
+    """Store chat_id in thread-local storage for tool handlers.
+
+    Called by the pre_llm_call hook. Safe within the same thread.
+    Falls back to os.environ for cross-thread scenarios (see _get_session_chat_id).
+    """
+    if chat_id:
+        _thread_local.chat_id = chat_id
 
 
 # ---------------------------------------------------------------------------
@@ -26,14 +44,18 @@ logger = logging.getLogger(__name__)
 def _get_session_chat_id() -> str:
     """Get chat_id from Hermes session context.
 
-    Hermes stores per-request session info in contextvars (gateway mode)
-    or os.environ (CLI mode).  The plugin uses try/except imports so it
-    works without direct dependency on the Hermes gateway module.
-
     Resolution order:
-    1. gateway.session_context.get_session_env("HERMES_SESSION_CHAT_ID")
-    2. os.environ["HERMES_SESSION_CHAT_ID"]
+    1. Thread-local storage (set by pre_llm_call hook, safe within same thread)
+    2. gateway.session_context.get_session_env (contextvars)
+    3. os.environ["HERMES_SESSION_CHAT_ID"] (fallback, has race condition for concurrent sessions)
     """
+    # Try thread-local first (safe within same thread)
+    chat_id = getattr(_thread_local, "chat_id", "")
+    if chat_id:
+        logger.debug(f"Got chat_id from thread-local: {chat_id}")
+        return chat_id
+
+    # Try contextvars (Hermes gateway)
     try:
         from gateway.session_context import get_session_env  # type: ignore[import-untyped]
         chat_id = get_session_env("HERMES_SESSION_CHAT_ID", "")
@@ -47,11 +69,12 @@ def _get_session_chat_id() -> str:
     except Exception as e:
         logger.warning(f"Unexpected error getting session context: {e}")
 
+    # Fallback: os.environ (known race condition for concurrent sessions)
     env_chat_id = os.environ.get("HERMES_SESSION_CHAT_ID", "")
     if env_chat_id:
         logger.debug(f"Got chat_id from os.environ: {env_chat_id}")
     else:
-        logger.warning("No chat_id found in contextvars or os.environ")
+        logger.warning("No chat_id found in thread-local, contextvars, or os.environ")
     return env_chat_id
 
 
@@ -61,7 +84,7 @@ def _resolve_chat_id(args: dict, **kwargs) -> str:
     Priority:
     1. args["chat_id"] — LLM explicitly passed
     2. kwargs["chat_id"] — Hermes dispatcher kwargs (currently unused)
-    3. Hermes session context (contextvars / os.environ)
+    3. Hermes session context (thread-local / contextvars / os.environ)
     4. HERMES_FEISHU_CHAT_ID from os.environ (fallback for single-chat scenarios)
     """
     chat_id = (
@@ -70,10 +93,10 @@ def _resolve_chat_id(args: dict, **kwargs) -> str:
         or _get_session_chat_id()
         or os.environ.get("HERMES_FEISHU_CHAT_ID", "")
     )
-    
+
     if not chat_id:
         logger.error("No chat_id available from any source (args, kwargs, session, or default)")
-    
+
     return chat_id
 
 
@@ -125,13 +148,10 @@ def send_feishu_card(args: dict, **kwargs) -> str:
                 title = "📊 数据表格"
             card = build_mixed_card(content, title=title, template=template)
             if card is None:
-                from .card_builder import build_content_card
                 card = build_content_card(content, title=title, template=template)
         else:
-            from .card_builder import build_content_card
             card = build_content_card(content, title=title or None, template=template)
     else:
-        from .card_builder import build_content_card
         card = build_content_card(
             content,
             title=title or None,

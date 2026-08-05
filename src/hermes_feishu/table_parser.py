@@ -65,13 +65,19 @@ class ParsedTable:
 
 
 def _parse_row(line: str) -> List[str]:
-    """Parse a single table row into cell strings."""
+    """Parse a single table row into cell strings.
+
+    Handles escaped pipes (\\|) inside cells — a \\| in the cell content
+    is treated as a literal pipe character, not a column separator.
+    """
     line = line.strip()
     if not line.startswith("|") or not line.endswith("|"):
         return []
-    # Remove leading and trailing pipe, split by pipe
+    # Remove leading and trailing pipe
     inner = line[1:-1]
-    cells = [cell.strip() for cell in inner.split("|")]
+    # Split on unescaped pipes only, then unescape \|
+    cells = re.split(r"(?<!\\)\|", inner)
+    cells = [c.strip().replace("\\|", "|") for c in cells]
     return cells
 
 

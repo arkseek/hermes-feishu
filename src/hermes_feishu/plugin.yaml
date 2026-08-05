@@ -1,5 +1,5 @@
 name: hermes-feishu
-version: 0.3.6
+version: 0.4.0
 manifest_version: 1
 author: hermes-feishu contributors
 description: 增强 Hermes 飞书消息通道，支持卡片消息和表格渲染。当 LLM 需要展示表格时，自动通过飞书卡片 Table 组件发送，解决飞书 post 消息不支持 Markdown 表格的问题。

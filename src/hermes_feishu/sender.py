@@ -13,6 +13,33 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Lark client cache (avoid re-auth on every send)
+# ---------------------------------------------------------------------------
+
+_client_cache: Dict[str, Any] = {}
+
+
+def _get_or_create_client(app_id: str, app_secret: str) -> Any:
+    """Get a cached lark-oapi client or create a new one.
+
+    Caching by (app_id, app_secret) avoids re-authenticating on every
+    send_card call, which is wasteful under high-frequency usage.
+    """
+    import lark_oapi as lark
+
+    cache_key = f"{app_id}:{app_secret}"
+    if cache_key not in _client_cache:
+        _client_cache[cache_key] = (
+            lark.Client.builder()
+            .app_id(app_id)
+            .app_secret(app_secret)
+            .log_level(lark.LogLevel.WARNING)
+            .build()
+        )
+        logger.debug("hermes_feishu: Created new lark client for app_id=%s", app_id)
+    return _client_cache[cache_key]
+
 
 def _get_credentials() -> tuple[str, str]:
     """Get Feishu app credentials from environment variables.
@@ -133,20 +160,14 @@ def send_card(
             return json.dumps({"success": False, "error": str(e)})
 
     try:
-        import lark_oapi as lark
+        import lark_oapi as lark  # noqa: F401 (used by _get_or_create_client)
         from lark_oapi.api.im.v1 import (
             CreateMessageRequest,
             CreateMessageRequestBody,
         )
 
-        # Build client
-        client = (
-            lark.Client.builder()
-            .app_id(app_id)
-            .app_secret(app_secret)
-            .log_level(lark.LogLevel.WARNING)
-            .build()
-        )
+        # Use cached client to avoid re-auth on every call
+        client = _get_or_create_client(app_id, app_secret)
 
         # Build request
         card_json = json.dumps(card, ensure_ascii=False)

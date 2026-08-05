@@ -45,21 +45,27 @@ class TestBuildTableCard:
         card = build_table_card(table)
         columns = card["elements"][0]["columns"]
         assert len(columns) == 2
+        # name is the internal field key (col_0, col_1); display_name holds the header text
+        assert columns[0]["name"] == "col_0"
+        assert columns[0]["display_name"] == "Name"
         assert columns[0]["field_type"] == "text"
-        assert columns[0]["name"] == "Name"
+        assert columns[1]["name"] == "col_1"
+        assert columns[1]["display_name"] == "Score"
         assert columns[1]["field_type"] == "number"
-        assert columns[1]["name"] == "Score"
 
     def test_rows(self):
         table = self._make_table()
         card = build_table_card(table)
         rows = card["elements"][0]["rows"]
         assert len(rows) == 2
-        assert rows[0][0]["text"] == "Alice"
-        assert rows[0][1]["text"] == "95"
-        assert rows[0][1]["value"] == 95
-        # 87.5 stays as float
-        assert rows[1][1]["value"] == 87.5
+        # Row format: {"col_0": "Alice", "col_1": 95}
+        # Text column → string; number column → numeric (int/float)
+        assert rows[0]["col_0"] == "Alice"
+        assert rows[0]["col_1"] == 95
+        assert isinstance(rows[0]["col_1"], int)
+        assert rows[1]["col_0"] == "Bob"
+        assert rows[1]["col_1"] == 87.5
+        assert isinstance(rows[1]["col_1"], float)
 
     def test_custom_title(self):
         table = self._make_table()
