@@ -117,6 +117,61 @@ class TestToolHandlers:
         assert card is not None
         assert any(e["tag"] == "table" for e in card["elements"])
 
+    def test_reaction_defaults_to_done(self):
+        from hermes_feishu.tools import send_feishu_card
+        from unittest.mock import patch
+
+        captured = {}
+
+        def fake_send(card, chat_id, add_reaction=None):
+            captured["add_reaction"] = add_reaction
+            return json.dumps({"success": True})
+
+        with patch("hermes_feishu.tools.send_card", side_effect=fake_send):
+            send_feishu_card({"content": "hi"}, chat_id="x")
+        assert captured["add_reaction"] == "DONE"
+
+    def test_reaction_empty_string_skips_reaction(self):
+        """An explicit empty reaction must reach send_card as '' (skip),
+        not be swallowed by a truthiness fallback to 'DONE'."""
+        from hermes_feishu.tools import send_feishu_card, send_feishu_table
+        from unittest.mock import patch
+
+        captured = []
+
+        def fake_send(card, chat_id, add_reaction=None):
+            captured.append(add_reaction)
+            return json.dumps({"success": True})
+
+        with patch("hermes_feishu.tools.send_card", side_effect=fake_send):
+            send_feishu_card({"content": "hi", "reaction": ""}, chat_id="x")
+            send_feishu_table(
+                {"headers": ["A"], "rows": [["1"]], "reaction": ""}, chat_id="x"
+            )
+        assert captured == ["", ""]
+
+    def test_table_ragged_rows_normalized(self):
+        """Rows with more/fewer cells than headers are truncated/padded so
+        row keys always align with the column specs."""
+        from hermes_feishu.tools import send_feishu_table
+        from unittest.mock import patch
+
+        captured = {}
+
+        def fake_send(card, chat_id, add_reaction=None):
+            captured["card"] = card
+            return json.dumps({"success": True})
+
+        with patch("hermes_feishu.tools.send_card", side_effect=fake_send):
+            send_feishu_table(
+                {"headers": ["A", "B"], "rows": [["x", "y", "z"], ["w"]]},
+                chat_id="x",
+            )
+        table = captured["card"]["elements"][0]
+        assert [c["name"] for c in table["columns"]] == ["col_0", "col_1"]
+        assert table["rows"][0] == {"col_0": "x", "col_1": "y"}  # extra dropped
+        assert table["rows"][1] == {"col_0": "w", "col_1": ""}   # missing padded
+
 
 class TestPreLlmCallHook:
     def test_feishu_platform_returns_context(self):

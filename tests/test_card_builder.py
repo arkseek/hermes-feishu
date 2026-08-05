@@ -9,7 +9,7 @@ from hermes_feishu.card_builder import (
     build_table_card,
     card_to_json,
 )
-from hermes_feishu.table_parser import ParsedTable, TableColumn, TableCell
+from hermes_feishu.table_parser import ParsedTable, TableColumn, TableCell, parse_table
 
 
 class TestBuildTableCard:
@@ -77,6 +77,16 @@ class TestBuildTableCard:
         card = build_table_card(table, template="green")
         assert card["header"]["template"] == "green"
 
+    def test_extra_cells_dropped(self):
+        """Cells beyond the column definitions must not produce orphan keys."""
+        table = ParsedTable(
+            headers=[TableColumn(name="A", index=0, field_type="text")],
+            rows=[[TableCell(text="1"), TableCell(text="2")]],
+        )
+        card = build_table_card(table)
+        rows = card["elements"][0]["rows"]
+        assert list(rows[0].keys()) == ["col_0"]
+
 
 class TestBuildContentCard:
     def test_basic_markdown(self):
@@ -139,6 +149,41 @@ class TestBuildMixedCard:
         assert card["elements"][1]["tag"] == "markdown"
         assert "Middle" in card["elements"][1]["content"]
         assert card["elements"][2]["tag"] == "table"
+
+    def test_blank_line_separated_tables(self):
+        """Tables separated only by a blank line must all be rendered.
+
+        Regression test: the table-block regex merges tables separated by a
+        blank line into one match; without the blank-line pre-split the second
+        table was silently dropped from the card.
+        """
+        md = "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| X | Y |\n| --- | --- |\n| a | b |"
+        card = build_mixed_card(md)
+        assert card is not None
+        tables = [e for e in card["elements"] if e["tag"] == "table"]
+        assert len(tables) == 2
+        assert tables[0]["rows"] == [{"col_0": 1, "col_1": 2}]
+        assert tables[1]["rows"] == [{"col_0": "a", "col_1": "b"}]
+
+    def test_text_and_blank_lines_around_tables(self):
+        md = (
+            "Intro\n\n| A |\n| --- |\n| 1 |\n\nMiddle\n\n| B |\n| --- |\n| 2 |\n\nOutro"
+        )
+        card = build_mixed_card(md)
+        assert card is not None
+        tags = [e["tag"] for e in card["elements"]]
+        assert tags == ["markdown", "table", "markdown", "table", "markdown"]
+        assert card["elements"][0]["content"] == "Intro"
+        assert card["elements"][2]["content"] == "Middle"
+        assert card["elements"][4]["content"] == "Outro"
+
+    def test_preparsed_tables_reused(self):
+        """Caller-provided parsed tables are used instead of re-parsing."""
+        md = "| A |\n| --- |\n| 1 |"
+        tables = parse_table(md)
+        card = build_mixed_card(md, tables=tables)
+        assert card is not None
+        assert card["elements"][0]["rows"] == [{"col_0": 1}]
 
 
 class TestCardToJson:

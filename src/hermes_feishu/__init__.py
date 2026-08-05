@@ -87,8 +87,8 @@ def _on_pre_llm_call(
         set_session_chat_id(chat_id)
         os.environ["HERMES_SESSION_CHAT_ID"] = chat_id
 
-    # Log hook activation for debugging
-    logger.info(
+    # Log hook activation for debugging (DEBUG level: session_id/chat_id are PII)
+    logger.debug(
         f"[hermes-feishu] pre_llm_call hook: platform={platform}, "
         f"chat_id={chat_id or '(empty)'}, session_id={session_id}, "
         f"sender_id={sender_id or '(empty)'}"
@@ -110,7 +110,7 @@ def _on_pre_llm_call(
             potential_chat_id = parts[4]
             if potential_chat_id.startswith(("oc_", "ou_", "gc_")):  # Feishu chat ID prefixes
                 chat_id = potential_chat_id
-                logger.info(f"[hermes-feishu] Extracted chat_id from session_id: {chat_id}")
+                logger.debug(f"[hermes-feishu] Extracted chat_id from session_id: {chat_id}")
 
     # Build context with chat_id - inject on EVERY turn to ensure LLM remembers
     context = (
@@ -128,7 +128,7 @@ def _on_pre_llm_call(
 
     if chat_id:
         context += f"\n**Current chat_id**: `{chat_id}`\n"
-        logger.info(f"[hermes-feishu] Injected chat_id into context: {chat_id}")
+        logger.debug(f"[hermes-feishu] Injected chat_id into context: {chat_id}")
 
     logger.debug(f"[hermes-feishu] Injecting context (length={len(context)} chars)")
 

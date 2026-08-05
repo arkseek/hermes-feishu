@@ -15,7 +15,13 @@ from typing import Any, Dict, List
 from .card_builder import build_content_card, build_mixed_card, build_table_card
 from .schemas import SEND_FEISHU_CARD_SCHEMA, SEND_FEISHU_TABLE_SCHEMA
 from .sender import _has_credentials, send_card
-from .table_parser import ParsedTable, TableColumn, TableCell
+from .table_parser import (
+    ParsedTable,
+    TableCell,
+    TableColumn,
+    _infer_column_type,
+    parse_table,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +125,8 @@ def send_feishu_card(args: dict, **kwargs) -> str:
     title = args.get("title", "")
     chat_id = _resolve_chat_id(args, **kwargs)
     template = args.get("template", "blue")
-    reaction = args.get("reaction") or "DONE"  # Default: "DONE" (✅ completed)
-    # Set to empty string to skip reaction
+    reaction = args.get("reaction", "DONE")  # Default: "DONE" (✅ completed)
+    # Pass empty string to skip reaction
 
     if not content:
         return json.dumps({"error": "No content provided"})
@@ -138,19 +144,14 @@ def send_feishu_card(args: dict, **kwargs) -> str:
         logger.error(f"No chat_id resolved: {error_msg}")
         return json.dumps(error_msg, ensure_ascii=False)
 
-    # Check for tables in content
-    from .table_parser import parse_table, contains_table
-
-    if contains_table(content):
-        tables = parse_table(content)
-        if tables:
-            if not title:
-                title = "📊 数据表格"
-            card = build_mixed_card(content, title=title, template=template)
-            if card is None:
-                card = build_content_card(content, title=title, template=template)
-        else:
-            card = build_content_card(content, title=title or None, template=template)
+    # Parse once, then decide the card type
+    tables = parse_table(content)
+    if tables:
+        if not title:
+            title = "📊 数据表格"
+        card = build_mixed_card(content, title=title, template=template, tables=tables)
+        if card is None:
+            card = build_content_card(content, title=title, template=template)
     else:
         card = build_content_card(
             content,
@@ -182,8 +183,8 @@ def send_feishu_table(args: dict, **kwargs) -> str:
     title = args.get("title", "") or "📊 数据表格"
     chat_id = _resolve_chat_id(args, **kwargs)
     template = args.get("template", "blue")
-    reaction = args.get("reaction") or "DONE"  # Default: "DONE" (✅ completed)
-    # Set to empty string to skip reaction
+    reaction = args.get("reaction", "DONE")  # Default: "DONE" (✅ completed)
+    # Pass empty string to skip reaction
 
     if not headers_raw:
         return json.dumps({"error": "No headers provided"})
@@ -214,19 +215,15 @@ def send_feishu_table(args: dict, **kwargs) -> str:
     all_values: Dict[int, List[str]] = {col.index: [] for col in columns}
 
     for row_data in rows_raw:
-        cells: List[TableCell] = []
-        for idx, val in enumerate(row_data):
-            val_str = str(val)
-            if idx < len(columns):
-                tc = TableCell(text=val_str)
-                cells.append(tc)
-                all_values[idx].append(val_str)
-            else:
-                cells.append(TableCell(text=val_str))
-        rows.append(cells)
+        # Normalize cell count to match headers: drop extra cells, pad
+        # missing ones, so row keys always align with the column specs.
+        normalized = [str(v) for v in row_data[: len(columns)]]
+        normalized += [""] * (len(columns) - len(normalized))
+        rows.append([TableCell(text=v) for v in normalized])
+        for idx, v in enumerate(normalized):
+            all_values[idx].append(v)
 
     # Infer column types
-    from .table_parser import _infer_column_type
     for col in columns:
         col.field_type = _infer_column_type(all_values.get(col.index, []))
 

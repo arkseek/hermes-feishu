@@ -13,9 +13,9 @@ from .table_parser import (
     ParsedTable,
     TableColumn,
     TableCell,
+    _BLANK_LINE_RE,
     _TABLE_BLOCK_RE,
     parse_table,
-    split_table_and_text,
 )
 
 
@@ -89,9 +89,12 @@ def _build_table_rows(
     for row in rows:
         feishu_row: Dict[str, Any] = {}
         for idx, cell in enumerate(row):
-            col = columns[idx] if idx < len(columns) else None
-            field_type = col.field_type if col else "text"
-            feishu_row[f"col_{idx}"] = _convert_cell_value(cell, field_type)
+            if idx >= len(columns):
+                # Cells beyond the defined columns have no matching column
+                # spec; drop them so the card stays valid for Feishu.
+                break
+            col = columns[idx]
+            feishu_row[f"col_{idx}"] = _convert_cell_value(cell, col.field_type)
         feishu_rows.append(feishu_row)
     return feishu_rows
 
@@ -174,6 +177,7 @@ def build_mixed_card(
     markdown: str,
     title: Optional[str] = None,
     template: str = "blue",
+    tables: Optional[List[ParsedTable]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Build a Feishu card that handles mixed content (text + tables).
 
@@ -184,12 +188,15 @@ def build_mixed_card(
         markdown: Full markdown content that may include tables.
         title: Optional card header title.
         template: Card header color template.
+        tables: Pre-parsed tables (from table_parser.parse_table). Pass this
+                when the caller already parsed the content to avoid re-parsing.
 
     Returns:
         Complete Feishu card JSON dict, or None if no tables found
         (in which case use build_content_card or send as post message).
     """
-    tables = parse_table(markdown)
+    if tables is None:
+        tables = parse_table(markdown)
     if not tables:
         return None
 
@@ -205,41 +212,46 @@ def build_mixed_card(
 
     elements: List[Dict[str, Any]] = []
 
-    # Walk through the original markdown to maintain order of text and tables.
-    # _TABLE_BLOCK_RE is imported from table_parser to ensure consistent
-    # table detection between parsing and card building.
-    last_end = 0
+    # Walk blank-line-split sections, mirroring parse_table's pre-split.
+    # Without the split, _TABLE_BLOCK_RE would merge tables separated only
+    # by a blank line into a single match, misaligning them with the
+    # parsed tables and silently dropping tables from the card.
     table_idx = 0
-    for match in _TABLE_BLOCK_RE.finditer(markdown):
-        # Text before this table
-        before = markdown[last_end:match.start()].strip()
-        if before:
+    for section in _BLANK_LINE_RE.split(markdown):
+        if not section.strip():
+            continue
+
+        last_end = 0
+        for match in _TABLE_BLOCK_RE.finditer(section):
+            # Text before this table
+            before = section[last_end:match.start()].strip()
+            if before:
+                elements.append({
+                    "tag": "markdown",
+                    "content": before,
+                })
+
+            # Table element
+            if table_idx < len(tables):
+                table = tables[table_idx]
+                columns = _build_table_columns(table.headers)
+                rows = _build_table_rows(table.rows, table.headers)
+                elements.append({
+                    "tag": "table",
+                    "columns": columns,
+                    "rows": rows,
+                })
+                table_idx += 1
+
+            last_end = match.end()
+
+        # Remaining text after the last table in this section
+        remaining = section[last_end:].strip()
+        if remaining:
             elements.append({
                 "tag": "markdown",
-                "content": before,
+                "content": remaining,
             })
-
-        # Table element
-        if table_idx < len(tables):
-            table = tables[table_idx]
-            columns = _build_table_columns(table.headers)
-            rows = _build_table_rows(table.rows, table.headers)
-            elements.append({
-                "tag": "table",
-                "columns": columns,
-                "rows": rows,
-            })
-            table_idx += 1
-
-        last_end = match.end()
-
-    # Remaining text after last table
-    remaining = markdown[last_end:].strip()
-    if remaining:
-        elements.append({
-            "tag": "markdown",
-            "content": remaining,
-        })
 
     card["elements"] = elements
     return card
